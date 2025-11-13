@@ -1,7 +1,8 @@
 ---
-title: "B223788"
-output: html_document
-date: "2025-10-31"
+title: "Investigation into the impact of COVID-19 pandemic on the prescription of anti-coagulant medication in Scotland"
+date: "2025-11-14"
+output:
+  html_document
 ---
 
 ```{r setup, include=FALSE}
@@ -9,11 +10,17 @@ knitr::opts_chunk$set(echo  = TRUE, message = FALSE, warning = FALSE)
 
 ```
 
-# Building the dataset used for this analysis 
+### Aim
 
-## Full code used for the dataset
+This report aims to investigate whether there has been a change in the prescribing trends of anticoagulant medications in Scotland before, during and after the COVID-19 pandemic. Specifically, this investigation focuses on 5 different anticoagulant drugs and analyses how their prescription patterns may have changed across the years of 2018-2022.  
 
-```{r dataset-code}
+
+# Methods 
+
+For this analysis, open prescribing data from Public Health Scotland (2018-2022) and daily COVID-19 admission data (Public Health Scotland, 2020-2022) will be used. 
+For the prescribing data, data containing the following anticoagulant names and their corresponding brand-names (Warfarin, Heparin, Apixaban, Rivaroxaban, and Edoxaban) were selected and grouped by month and year. These 5 were specifically selected as they are the most widely-known.
+
+```{r dataset-code, results='hide'}
 
 library(tidyverse)  
 library(lubridate)
@@ -24,70 +31,36 @@ library(stringr)
 library(dplyr)
 library(ggplot2)
 
-anti_platelet_drugs <- c(
-  "ASPIRIN","CLOPIDOGREL","PRASUGREL","TICAGRELOR",
-  "DIPYRIDAMOLE","PERSANTIN","PLAVIX","BRILIQUE","EFFIENT"
-)
-anti_rx <- regex(paste(anti_platelet_drugs, collapse = "|"), ignore_case = TRUE)
+anti_coagulant_drugs <- c(
+  "WARFARIN","HEPARIN","APIXABAN","RIVAROXABAN",
+  "EDOXABAN","ELIQUIS","XARELTO","LIXIANA"
+)  #Eliquis is a brand name for apixaban, Xarelto is a brand name for rivaroxaban, lixiana is a brand name for edoxaban. This inclusion increases the number of data in the analysis, making the visualizations and interpretations more meaningful. 
+anti_rx <- regex(paste(anti_coagulant_drugs, collapse = "|"), ignore_case = TRUE)
 
-# Load in the consecutive data (per year)
+# Creating a function to load all consecutive years at once
 
-## YEAR 2018
-files <- list.files(here("data", "consecutive_data_2018"), pattern = "\\.csv$", full.names = TRUE)
-data_2018 <- files %>%
-  map_dfr(~ read_csv(.x, show_col_types = FALSE, progress = FALSE)) %>%
-  clean_names() %>%
-  filter(str_detect(bnf_item_description, anti_rx)) %>%
-  select(bnf_item_description, paid_quantity, paid_date_month) %>%
-  mutate(year = 2018)
+read_prescriptions_year <- function(year, root = "data") {
+  folder <- here(root, paste0("consecutive_data_", year))
+  files  <- list.files(folder, pattern = "\\.csv$", full.names = TRUE)
 
-## YEAR 2019
-files <- list.files(here("data", "consecutive_data_2019"), pattern = "\\.csv$", full.names = TRUE)
-data_2019 <- files %>%
-  map_dfr(~ read_csv(.x, show_col_types = FALSE, progress = FALSE)) %>%
-  clean_names() %>%
-  filter(str_detect(bnf_item_description, anti_rx)) %>%
-  select(bnf_item_description, paid_quantity, paid_date_month) %>%
-  mutate(year = 2019)
+  files %>%
+    map_dfr(~ read_csv(.x, show_col_types = FALSE, progress = FALSE)) %>%
+    clean_names() %>%
+    filter(str_detect(bnf_item_description, anti_rx)) %>%   
+    select(bnf_item_description, paid_quantity, paid_date_month) %>%
+    mutate(year = year)
+}
 
-## YEAR 2020
-files <- list.files(here("data", "consecutive_data_2020"), pattern = "\\.csv$", full.names = TRUE)
-data_2020 <- files %>%
-  map_dfr(~ read_csv(.x, show_col_types = FALSE, progress = FALSE)) %>%
-  clean_names() %>%
-  filter(str_detect(bnf_item_description, anti_rx)) %>%
-  select(bnf_item_description, paid_quantity, paid_date_month) %>%
-  mutate(year = 2020)
+#Call the function for all years and stack the results
+anti_coagulant_data <- map_dfr(2018:2022, read_prescriptions_year)
 
-## YEAR 2021
-files <- list.files(here("data", "consecutive_data_2021"), pattern = "\\.csv$", full.names = TRUE)
-data_2021 <- files %>%
-  map_dfr(~ read_csv(.x, show_col_types = FALSE, progress = FALSE)) %>%
-  clean_names() %>%
-  filter(str_detect(bnf_item_description, anti_rx)) %>%
-  select(bnf_item_description, paid_quantity, paid_date_month) %>%
-  mutate(year = 2021)
 
-## YEAR 2022
-files <- list.files(here("data", "consecutive_data_2022"), pattern = "\\.csv$", full.names = TRUE)
-data_2022 <- files %>%
-  map_dfr(~ read_csv(.x, show_col_types = FALSE, progress = FALSE)) %>%
-  clean_names() %>%
-  filter(str_detect(bnf_item_description, anti_rx)) %>%
-  select(bnf_item_description, paid_quantity, paid_date_month) %>%
-  mutate(year = 2022)
-
-# Combine all 5 datasets
-antiplatelets_2018_2022_combined <- bind_rows(
-  data_2018, data_2019, data_2020, data_2021, data_2022
-)
-
-# Filter/transform 
-anti_platelet_data <- antiplatelets_2018_2022_combined %>%
+# Filter and transform the data 
+anti_coagulant_data <- anti_coagulant_data %>%
   mutate(
     paid_quantity = suppressWarnings(as.numeric(paid_quantity)),
     month_date = case_when(
-      str_detect(paid_date_month, "^\\d{6}$") ~ ymd(paste0(paid_date_month, "01")), 
+      str_detect(paid_date_month, "^\\d{6}$") ~ ymd(paste0(paid_date_month, "01")), # allows formattingggg of the "Date" column to be consistent
       str_detect(paid_date_month, "^\\d{4}-\\d{2}$") ~ ym(paid_date_month), 
       TRUE ~ suppressWarnings(ymd(paid_date_month))
     )
@@ -95,91 +68,69 @@ anti_platelet_data <- antiplatelets_2018_2022_combined %>%
   select(bnf_item_description, paid_quantity, month_date)
 
 # Group all drugs under general names
-anti_platelet_data <- anti_platelet_data %>%
+anti_coagulant_data <- anti_coagulant_data %>%
   mutate(
     DrugGroup = case_when(
-      str_detect(bnf_item_description, regex("aspirin",     TRUE)) ~ "Aspirin",
-      str_detect(bnf_item_description, regex("clopidogrel", TRUE)) ~ "Clopidogrel",
-      str_detect(bnf_item_description, regex("ticagrelor",  TRUE)) ~ "Ticagrelor",
-      str_detect(bnf_item_description, regex("prasugrel",   TRUE)) ~ "Prasugrel",
-      str_detect(bnf_item_description, regex("dipyridamole",TRUE)) ~ "Dipyridamole",
-      TRUE ~ "Other"
+      str_detect(bnf_item_description, regex("warfarin", TRUE)) ~ "Warfarin",
+      str_detect(bnf_item_description, regex("heparin", TRUE)) ~ "Heparin",
+      str_detect(bnf_item_description, regex("apixaban",  TRUE)) ~ "Apixaban",
+      str_detect(bnf_item_description, regex("rivaroxaban",   TRUE)) ~ "Rivaroxaban",
+      str_detect(bnf_item_description, regex("Edoxaban",TRUE)) ~ "Edoxaban",
+      TRUE ~ "Other" #the rest of the drugs in the dataset, can be used to visualize how the trends in anti-coagulants specifically changed, compared to other medicines over the years.  
     )
   )
 
-monthly_grouped_data <- anti_platelet_data %>%
+monthly_grouped_data <- anti_coagulant_data %>%
   group_by(month_date, DrugGroup) %>%
-  summarise(paid_quantity = sum(paid_quantity, na.rm = TRUE), .groups = "drop")
+  summarise(Total_Quantity_Dispensed = sum(paid_quantity, na.rm = TRUE), .groups = "drop")
 
 # Separate by month and year
-anti_platelet_data <- anti_platelet_data %>%
+monthly_yearly_data_summary <- anti_coagulant_data %>%
   mutate(
     Year  = year(month_date),
     Month = month(month_date, label = TRUE, abbr = TRUE)
-  )
+  ) #this is done to allow subsequent plots to provide a better visual representation into how the prescribing anti-coagulant data changed over the months and years. 
 
-monthly_yearly_data_summary <- anti_platelet_data %>%
+#Create a summary dataset 
+monthly_yearly_data_summary <- monthly_yearly_data_summary %>%
   group_by(Year, Month, DrugGroup) %>%
-  summarise(Total_Paid = sum(paid_quantity, na.rm = TRUE), .groups = "drop")
+  summarise(Total_Quantity_Dispensed = sum(paid_quantity, na.rm = TRUE), .groups = "drop")
 
 ```
 
-# Data analysis and visualisation 
+# Data analysis & visualisation 
 
-## Figure 1 
+## Figure 1. Monthly trends in anticoagulant prescribing in Scotland (2018–2022)
+A visible shift in prescribing patterns is observed over time, with Warfarin prescriptions declining and the use of DOACs such as Apixaban and Edoxaban increasing, particularly after the onset of the COVID-19 pandemic in early 2020. 
 
-```{r figure-1, fig.width=10}
+```{r figure-1, fig.width=13, fig.height=4.2}
 
 monthly_yearly_data_summary <- monthly_yearly_data_summary %>%
   mutate(Month = factor(Month, levels = month.abb, ordered = TRUE))
 
 monthly_yearly_data_summary_plot <- monthly_yearly_data_summary %>% 
-  ggplot(aes(x = Month, y = Total_Paid, color = DrugGroup)) +
+  ggplot(aes(x = Month, y = Total_Quantity_Dispensed, color = DrugGroup)) +
   geom_line(aes(group = interaction(Year, DrugGroup))) +
   facet_wrap(~ Year, scales = "free_y") +
   scale_x_discrete(drop = FALSE) +
-  labs(title = "Monthly anti-platelet prescribing by year",
-       y = "Paid quantity", x = "Month") +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
-    plot.title = element_text(hjust = 0.5)
-  )
+labs(
+  title = "Monthly anticoagulant prescribing trends in Scotland (2018–2022)",
+  subtitle = "Monthly quantity dispensed by drug group and year",
+  caption = "Source: Public Health Scotland Data by Prescriber Location (2018–2022)",
+  y = "Total Quantity Dispensed",
+  x = "Month"
+) +
+theme(
+  axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+   plot.subtitle = element_text(hjust = 0.5, size = 12),
+  plot.title = element_text(hjust = 0.5),
+)
 
 print(monthly_yearly_data_summary_plot)
 
-
 ```
 
-## Figure 2 - table 
+# Next steps
 
-```{r figure-2, fig.width=10}
-
-library(glue)
-prescription_per_year <- monthly_yearly_data_summary %>%
-  group_by(Year,DrugGroup) %>%
-  summarise(total_paid = sum(Total_Paid, na.rm = TRUE), .groups = "drop") %>%
-  pivot_wider(names_from = DrugGroup, values_from = total_paid, values_fill = 0) %>% 
-  gt() %>% 
-  cols_move(columns = "Other", 
-            after = c("Ticagrelor")) %>% 
-   fmt_number(columns = c(Aspirin, Clopidogrel, Dipyridamole, Prasugrel, Ticagrelor, Other), decimals = 2) %>% 
-  cols_align(align = "center",
-             columns = c(Aspirin, Clopidogrel, Other)) %>% 
-  data_color(
-    columns = c(Aspirin, Clopidogrel, Dipyridamole, Prasugrel, Ticagrelor, Other),
-    colors = scales::col_numeric(
-      palette = c("#e0f3f8", "#abd9e9", "#74add1", "#4575b4"), 
-      domain = NULL
-    )
-  ) %>% 
-  tab_header(
-       title = "Anti-platelet prescribing by year",
-       subtitle = glue("Paid Quantity of drugs, 2018-2022")) 
-
-prescription_per_year
-
-
-
-```
-
+Next I want to create a summary table which shows a change in the prescribing trends in anticoagulant medication. I will include a % change for each drug for a deeper analysis. Then I plan on merging this dataset with a daily COVID19 patient admission to investigate a potential relationship between anticoagulant prescribing and COVID19 hospitalisations (this would be my Figure 4). Not sure how large the discussion and conclusion section should be?
 
