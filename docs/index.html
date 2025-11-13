@@ -361,10 +361,10 @@ Scotland</h1>
 <h3>Aim</h3>
 <p>This report aims to investigate whether there has been a change in
 the prescribing trends of anticoagulant medications in Scotland before,
-during and after the COVID-19 pandemic. Specifically, this investigation
-focuses on 5 different anticoagulant drugs and analyses how their
-prescription patterns may have changed across the years of
-2018-2022.<br />
+during and after the COVID-19 pandemic (COVID19 increases the risk of
+thrombosis). Specifically, this investigation focuses on 5 different
+anticoagulant drugs and analyses how their prescription patterns may
+have changed across the years of 2018-2022.<br />
 For this analysis, open prescribing data from Public Health Scotland
 (2018-2022) and daily COVID-19 admission data (Public Health Scotland,
 2020-2022) will be used. For the prescribing data, data containing the
@@ -381,20 +381,22 @@ library(stringr)
 library(dplyr)
 library(ggplot2)
 
+#Define list of anticoagulant drugs
 anti_coagulant_drugs &lt;- c(
   &quot;WARFARIN&quot;,&quot;HEPARIN&quot;,&quot;APIXABAN&quot;,&quot;RIVAROXABAN&quot;,
   &quot;EDOXABAN&quot;,&quot;ELIQUIS&quot;,&quot;XARELTO&quot;,&quot;LIXIANA&quot;
 )  #Eliquis is a brand name for apixaban, Xarelto is a brand name for rivaroxaban, lixiana is a brand name for edoxaban. This inclusion increases the number of data in the analysis, making the visualizations and interpretations more meaningful. 
+
+#Creating a regular expression that acts as a search filter for the drugs
 anti_rx &lt;- regex(paste(anti_coagulant_drugs, collapse = &quot;|&quot;), ignore_case = TRUE)
 
 # Creating a function to load all consecutive years at once
-
 read_prescriptions_year &lt;- function(year, root = &quot;data&quot;) {
   folder &lt;- here(root, paste0(&quot;consecutive_data_&quot;, year))
   files  &lt;- list.files(folder, pattern = &quot;\\.csv$&quot;, full.names = TRUE)
 
   files %&gt;%
-    map_dfr(~ read_csv(.x, show_col_types = FALSE, progress = FALSE)) %&gt;%
+    map_dfr(~ read_csv(.x, show_col_types = FALSE, progress = FALSE)) %&gt;% #binding all files together in a single dataframe
     clean_names() %&gt;%
     filter(str_detect(bnf_item_description, anti_rx)) %&gt;%   
     select(bnf_item_description, paid_quantity, paid_date_month) %&gt;%
@@ -408,9 +410,9 @@ anti_coagulant_data &lt;- map_dfr(2018:2022, read_prescriptions_year)
 # Filter and transform the data 
 anti_coagulant_data &lt;- anti_coagulant_data %&gt;%
   mutate(
-    paid_quantity = suppressWarnings(as.numeric(paid_quantity)),
+    paid_quantity = suppressWarnings(as.numeric(paid_quantity)), #convert paid_quantity variable in a numeric form 
     month_date = case_when(
-      str_detect(paid_date_month, &quot;^\\d{6}$&quot;) ~ ymd(paste0(paid_date_month, &quot;01&quot;)), # allows formattingggg of the &quot;Date&quot; column to be consistent
+      str_detect(paid_date_month, &quot;^\\d{6}$&quot;) ~ ymd(paste0(paid_date_month, &quot;01&quot;)), # allows formatting of the &quot;Date&quot; column to be consistent
       str_detect(paid_date_month, &quot;^\\d{4}-\\d{2}$&quot;) ~ ym(paid_date_month), 
       TRUE ~ suppressWarnings(ymd(paid_date_month))
     )
@@ -426,10 +428,10 @@ anti_coagulant_data &lt;- anti_coagulant_data %&gt;%
       str_detect(bnf_item_description, regex(&quot;apixaban&quot;,  TRUE)) ~ &quot;Apixaban&quot;,
       str_detect(bnf_item_description, regex(&quot;rivaroxaban&quot;,   TRUE)) ~ &quot;Rivaroxaban&quot;,
       str_detect(bnf_item_description, regex(&quot;Edoxaban&quot;,TRUE)) ~ &quot;Edoxaban&quot;,
-      TRUE ~ &quot;Other&quot; #the rest of the drugs in the dataset, can be used to visualize how the trends in anti-coagulants specifically changed, compared to other medicines over the years.  
+      TRUE ~ &quot;Other&quot; #the rest of the drugs in the dataset, can be used to visualize how the trends in anti-coagulants specifically changed, compared to other medicines over the years. Could be removed??
     )
   )
-
+#Aggregate monthly totals 
 monthly_grouped_data &lt;- anti_coagulant_data %&gt;%
   group_by(month_date, DrugGroup) %&gt;%
   summarise(Total_Quantity_Dispensed = sum(paid_quantity, na.rm = TRUE), .groups = &quot;drop&quot;)
@@ -450,7 +452,7 @@ monthly_yearly_data_summary &lt;- monthly_yearly_data_summary %&gt;%
 <h2>Figure 1. Monthly trends in anticoagulant prescribing in Scotland
 (2018–2022)</h2>
 <pre class="r"><code>monthly_yearly_data_summary &lt;- monthly_yearly_data_summary %&gt;%
-  mutate(Month = factor(Month, levels = month.abb, ordered = TRUE))
+  mutate(Month = factor(Month, levels = month.abb, ordered = TRUE)) #sets the order of the months
 
 monthly_yearly_data_summary_plot &lt;- monthly_yearly_data_summary %&gt;% 
   ggplot(aes(x = Month, y = Total_Quantity_Dispensed, color = DrugGroup)) +
@@ -477,9 +479,10 @@ print(monthly_yearly_data_summary_plot)</code></pre>
 <h1>Next steps</h1>
 <p>Next I want to create a summary table which shows a change in the
 prescribing trends in anticoagulant medication. I will include a %
-change for each drug for a deeper analysis. Then I plan on merging this
-dataset with a daily COVID19 patient admission to investigate a
-potential relationship between anticoagulant prescribing and COVID19
+change for each drug for a deeper analysis. Not sure if I should keep
+the ‘Other’ drugs in the analysis. Then I plan on merging this dataset
+with a daily COVID19 patient admission to investigate a potential
+relationship between anticoagulant prescribing and COVID19
 hospitalisations (this would be my Figure 4). Not sure how large the
 discussion and conclusion section should be?</p>
 </div>
