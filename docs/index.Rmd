@@ -14,8 +14,7 @@ knitr::opts_chunk$set(echo  = TRUE, message = FALSE, warning = FALSE)
 ### Aim
 
 This report aims to investigate whether there has been a change in the prescribing trends of anticoagulant medications in Scotland before, during and after the COVID-19 pandemic (COVID19 increases the risk of thrombosis). Specifically, this investigation focuses on 5 different anticoagulant drugs and analyses how their prescription patterns may have changed across the years of 2018-2022.  
-For this analysis, open prescribing data from Public Health Scotland (2018-2022) and daily COVID-19 admission data (Public Health Scotland, 2020-2022) will be used. 
-For the prescribing data, data containing the following anticoagulant names and their corresponding brand-names (Warfarin, Heparin, Apixaban, Rivaroxaban, and Edoxaban) were selected and grouped by month and year. These 5 were specifically selected as they are the most widely-known.
+For this analysis, open prescribing data from Public Health Scotland (2018-2022) and daily COVID-19 admission data (Public Health Scotland, 2020-2022) will be used.
 
 ```{r dataset-code, results='hide'}
 
@@ -24,108 +23,128 @@ library(lubridate)
 library(janitor)
 library(here)
 library(gt)
-library(stringr)
-library(dplyr)
-library(ggplot2)
 
-#Define list of anticoagulant drugs
+# ---Framework---
+
+# Define list of anticoagulant drugs (generic + brand names)
 anti_coagulant_drugs <- c(
   "WARFARIN","HEPARIN","APIXABAN","RIVAROXABAN",
   "EDOXABAN","ELIQUIS","XARELTO","LIXIANA"
-)  #Eliquis is a brand name for apixaban, Xarelto is a brand name for rivaroxaban, lixiana is a brand name for edoxaban. This inclusion increases the number of data in the analysis, making the visualizations and interpretations more meaningful. 
+)   
 
-#Creating a regular expression that acts as a search filter for the drugs
+# Creating a regular expression that acts as a search filter to identify all anticoagulant drugs
 anti_rx <- regex(paste(anti_coagulant_drugs, collapse = "|"), ignore_case = TRUE)
 
-# Creating a function to load all consecutive years at once
+# --- Functions --- 
+
+# Function to load all prescribing data for each consecutive year
 read_prescriptions_year <- function(year, root = "data") {
   folder <- here(root, paste0("consecutive_data_", year))
   files  <- list.files(folder, pattern = "\\.csv$", full.names = TRUE)
 
   files %>%
-    map_dfr(~ read_csv(.x, show_col_types = FALSE, progress = FALSE)) %>% #binding all files together in a single dataframe
+    # Binding all files together in a single dataframe
+    map_dfr(~ read_csv(.x, show_col_types = FALSE, progress = FALSE)) %>% 
     clean_names() %>%
+    # Keep rows containing only anticoagulant medication item descriptions
     filter(str_detect(bnf_item_description, anti_rx)) %>%   
     select(bnf_item_description, paid_quantity, paid_date_month) %>%
     mutate(year = year)
 }
 
-#Call the function for all years and stack the results
-anti_coagulant_data <- map_dfr(2018:2022, read_prescriptions_year)
-
-
-# Filter and transform the data 
-anti_coagulant_data <- anti_coagulant_data %>%
+# Function for cleaning up anticoagulant data and creating consistent dates + drug groups
+clean_anti_coagulant_data <- function(data) {
+   data %>% 
   mutate(
-    paid_quantity = suppressWarnings(as.numeric(paid_quantity)), #convert paid_quantity variable in a numeric form 
+    # Convert paid_quantity variable in a numeric form for safe grouping
+    paid_quantity = suppressWarnings(as.numeric(paid_quantity)), 
+    # Match month/data formats into a true Date Object (first day of each month)
     month_date = case_when(
-      str_detect(paid_date_month, "^\\d{6}$") ~ ymd(paste0(paid_date_month, "01")), # allows formatting of the "Date" column to be consistent
+      str_detect(paid_date_month, "^\\d{6}$") ~ ymd(paste0(paid_date_month, "01")), 
       str_detect(paid_date_month, "^\\d{4}-\\d{2}$") ~ ym(paid_date_month), 
       TRUE ~ suppressWarnings(ymd(paid_date_month))
     )
   ) %>%
-  select(bnf_item_description, paid_quantity, month_date)
-
+  select(bnf_item_description, paid_quantity, month_date) %>% 
 # Group all drugs under general names
-anti_coagulant_data <- anti_coagulant_data %>%
   mutate(
-    DrugGroup = case_when(
+    Drug_Group = case_when(
       str_detect(bnf_item_description, regex("warfarin", TRUE)) ~ "Warfarin",
       str_detect(bnf_item_description, regex("heparin", TRUE)) ~ "Heparin",
       str_detect(bnf_item_description, regex("apixaban",  TRUE)) ~ "Apixaban",
       str_detect(bnf_item_description, regex("rivaroxaban",   TRUE)) ~ "Rivaroxaban",
       str_detect(bnf_item_description, regex("Edoxaban",TRUE)) ~ "Edoxaban",
-      TRUE ~ "Other" #the rest of the drugs in the dataset, can be used to visualize how the trends in anti-coagulants specifically changed, compared to other medicines over the years. Could be removed??
+      TRUE ~                                                     NA_character_
     )
-  )
-#Aggregate monthly totals 
-monthly_grouped_data <- anti_coagulant_data %>%
-  group_by(month_date, DrugGroup) %>%
-  summarise(Total_Quantity_Dispensed = sum(paid_quantity, na.rm = TRUE), .groups = "drop")
-
-# Separate by month and year
-monthly_yearly_data_summary <- anti_coagulant_data %>%
-  mutate(
+  ) %>% 
+    drop_na(Drug_Group)
+}
+ 
+  
+# Function for creating monthly summary per year, month and drug group
+monthly_prescribing_summary <- function(data) {
+  data %>% 
+   mutate(
     Year  = year(month_date),
     Month = month(month_date, label = TRUE, abbr = TRUE)
-  ) #this is done to allow subsequent plots to provide a better visual representation into how the prescribing anti-coagulant data changed over the months and years. 
-
-#Create a summary dataset 
-monthly_yearly_data_summary <- monthly_yearly_data_summary %>%
-  group_by(Year, Month, DrugGroup) %>%
+  ) %>%
+  group_by(Year, Month, Drug_Group) %>%
   summarise(Total_Quantity_Dispensed = sum(paid_quantity, na.rm = TRUE), .groups = "drop")
+  
+}
+
+# --- Main data code ---
+
+# Load and stack data for all consecutive years
+anti_coagulant_data_raw <- map_dfr(2018:2022, read_prescriptions_year)
+
+# Clean and classify drugs
+anti_coagulant_data <- clean_anti_coagulant_data(anti_coagulant_data_raw)
+
+# Monthly summary by year, month, and drug group (for plots & tables)
+monthly_yearly_data_summary <- monthly_prescribing_summary(anti_coagulant_data)
 
 ```
 
 ## Figure 1. Monthly trends in anticoagulant prescribing in Scotland (2018–2022)
 
-```{r figure-1, fig.width=13, fig.height=4.2}
+```{r figure-1, fig.width=13, fig.height=4.2, fig.cap= "Monthly anticoagulant prescribing trends in Scotland (2018–2022). Source: Public Health Scotland Data by Prescriber Location (2018–2022)"}
 
 monthly_yearly_data_summary <- monthly_yearly_data_summary %>%
-  mutate(Month = factor(Month, levels = month.abb, ordered = TRUE)) #sets the order of the months
+  mutate(
+    Month = factor(Month, levels = month.abb, ordered = TRUE),
+    Year  = factor(Year)
+  )
 
 monthly_yearly_data_summary_plot <- monthly_yearly_data_summary %>% 
-  ggplot(aes(x = Month, y = Total_Quantity_Dispensed, color = DrugGroup)) +
-  geom_line(aes(group = interaction(Year, DrugGroup))) +
-  facet_wrap(~ Year, scales = "free_y") +
+  ggplot(aes(x = Month,
+             y = Total_Quantity_Dispensed,
+             group = Year,
+             colour = Year)) +
+  geom_line(linewidth = 0.8) +
+  facet_wrap(~ Drug_Group, scales = "free_y") +
   scale_x_discrete(drop = FALSE) +
-labs(
-  title = "Monthly anticoagulant prescribing trends in Scotland (2018–2022)",
-  subtitle = "Monthly quantity dispensed by drug group and year",
-  caption = "Source: Public Health Scotland Data by Prescriber Location (2018–2022)",
-  y = "Total Quantity Dispensed",
-  x = "Month"
-) +
-theme(
-  axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
-   plot.subtitle = element_text(hjust = 0.5, size = 12),
-  plot.title = element_text(hjust = 0.5),
-)
+  labs(
+    title    = "Monthly anticoagulant prescribing trends in Scotland (2018–2022)",
+    subtitle = "One faceted plot per drug group; lines show monthly quantity by year",
+    y        = "Total Quantity Dispensed",
+    x        = "Month",
+    colour   = "Year"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x   = element_text(angle = 45, hjust = 1, vjust = 1),
+    plot.title    = element_text(hjust = 0.5, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5),
+    legend.position = "bottom" +
+      geom_smooth(se = FALSE, linewidth = 1, alpha = 0.3) +
+      geom_line(linewidth = 0.6)
+  ) 
 
 print(monthly_yearly_data_summary_plot)
 ```
 
 # Next steps
 
-Next I want to create a summary table which shows a change in the prescribing trends in anticoagulant medication. I will include a % change for each drug for a deeper analysis. Not sure if I should keep the 'Other' drugs in the analysis. Then I plan on merging this dataset with a daily COVID19 patient admission to investigate a potential relationship between anticoagulant prescribing and COVID19 hospitalisations (this would be my Figure 4). Not sure how large the discussion and conclusion section should be?
+Next I want to create a summary table which shows a change in the prescribing trends in anticoagulant medication. I will include a % change for each drug for a deeper analysis. Then I plan on merging this dataset with a daily COVID19 patient admission to investigate a potential relationship between anticoagulant prescribing and COVID19 hospitalisations (this would be my Figure 4). Not sure how large the discussion and conclusion section should be?
 
