@@ -4,7 +4,15 @@ author: "B223788"
 date: "2025-11-14"
 output:
   html_document:
-    code_folding: hide
+    theme: cosmo
+    toc: true
+    toc_float: 
+      collapsed: false
+      smooth_scroll: true
+    number_sections: true
+    df_print: paged
+    highlight: kate
+    fig_caption: true
 ---
 
 ```{r setup, include=FALSE}
@@ -12,10 +20,27 @@ knitr::opts_chunk$set(echo  = TRUE, message = FALSE, warning = FALSE)
 
 ```
 
-### Aim
+# Introduction
 
-This report aims to investigate whether there has been a change in the prescribing trends of anticoagulant medications in Scotland before, during and after the COVID-19 pandemic (COVID19 increases the risk of thrombosis). Specifically, this investigation focuses on 5 different anticoagulant drugs and analyses how their prescription patterns may have changed across the years of 2018-2022.  
-For this analysis, open prescribing data from Public Health Scotland (2018-2022) and daily COVID-19 admission data (Public Health Scotland, 2020-2022) will be used.
+Coronavirus 2019 disease (COVID-19) is caused by an infection of severe acute respiratory syndrome coronavirus type-2 (Sutanto & Soegiarto, 2023). Since its emergence at the end of 2019, this virus has affected over 650 million people worldwide and caused more than 6.5 million deaths. The primary causes of COVID-19 related mortality are respiratory failure and sepsis (Elezkurtaj et al., 2021). Apart from these, pulmonary thromboembolism has been identified as another contributing factor to COVID-19 related mortality (Kichloo et al., 2020). Thromboembolism and thrombosis (arterial and venous) are caused by hypercoagulability, the tendency of blood to form clots. Infection with COVID-19 has been shown to increase the risk of life-threatening thrombosis and systemic hypercoagulability in patients (Kichloo et al., 2020). 
+During the pandemic, anticoagulant therapy played a critical role in managing COVID-19 patients and their symptoms, by both reducing the risk of thrombosis and improving survival outcomes (Afshar et al., 2023). Drugs including Warfarin, Heparin and others were central to treatment and thrombotic prevention. However, healthcare systems have recommended patients switch from Warfarin to *direct oral anticoagulants (DOACs)* such as Apixaban and others, to reduce the need for in-person blood monitoring during the lockdown period (Curtis et al., 2021). These clinical changes may have had an effect on the overall trend in anticoagulant prescriptions before, during and after the pandemic.
+
+## Aim
+
+This report investigates how COVID-19 affected the prescribing of anticoagulant medications in Scotland between the years 2018 and 2022. In particular, the report evaluates whether according to national guidelines, the switch from Warfarin to DOACs during the pandemic led to:
+a) *a decline* in the prescription of Warfarin, 
+b) *an increase* in the prescription of DOACs, and, 
+c) *a visual relationship* between changes in anticoagulant use and monthly COVID-19 admissions. 
+Although this analysis aims to highlight a possible association between anticoagulant prescribing and COVID-19 admissions, it does not aim to establish a causative relationship between the two. 
+
+# Methods
+
+For this analysis, open prescribing data from *Public Health Scotland* (2018-2022) (https://www.opendata.nhs.scot/dataset/prescriptions-in-the-community) and daily COVID-19 admission data (Public Health Scotland, 2020-2022) (https://www.opendata.nhs.scot/dataset/covid-19-in-scotland/resource/bb4d083b-7b92-4722-85a3-a9b58af1f794) will be used. 
+
+## Data sources and processing
+
+For each year 2018-2022, all monthly prescribing CSV files across Scotland were downloaded from the Public Health Scotland open data source. Files were saved in data/consecutive_data_2018 - data/consecutive_data_2022. Hence, each folder contains community prescribing CSVs from each of the 12 months for that calendar year where all prescribing drugs across Scotland are included. All prescribing files will be imported, cleaned and filtered to only include anticoagulant drugs, grouped by month, and will be combined in one dataset for further analysis. The daily_covid_admissions file is saved within the data folder and it will be aggregated to monthly admissions to appropriately match the prescribing dataset. 
+For the prescribing dataset, data containing *five anticoagulant drugs* (Warfarin, Heparin, Apixaban, Rivaroxaban, and Edoxaban) and their corresponding brand-names (ELIQUIS, XARELTO, LIXIANA) will be used, as they represent the most commonly used anticoagulant drugs in  Scotland across the time frame covered by this analysis. Brand names will be mapped according to their respective generic drug group. 
 
 ```{r dataset-code, results='hide'}
 
@@ -25,7 +50,7 @@ library(janitor)
 library(here)
 library(gt)
 
-# ---Framework---
+## Framework:
 
 # Define list of anticoagulant drugs (generic + brand names)
 anti_coagulant_drugs <- c(
@@ -36,7 +61,7 @@ anti_coagulant_drugs <- c(
 # Creating a regular expression that acts as a search filter to identify all anticoagulant drugs
 anti_rx <- regex(paste(anti_coagulant_drugs, collapse = "|"), ignore_case = TRUE)
 
-# --- Functions --- 
+## Functions: 
 
 # Function to load all prescribing data for each consecutive year
 read_prescriptions_year <- function(year, root = "data") {
@@ -57,7 +82,7 @@ read_prescriptions_year <- function(year, root = "data") {
 clean_anti_coagulant_data <- function(data) {
    data %>% 
   mutate(
-    # Convert paid_quantity variable in a numeric form for safe grouping
+    # Convert paid_quantity variable in a numeric form for appropriate grouping
     paid_quantity = suppressWarnings(as.numeric(paid_quantity)), 
     # Match month/data formats into a true Date Object (first day of each month)
     month_date = case_when(
@@ -69,15 +94,14 @@ clean_anti_coagulant_data <- function(data) {
   select(bnf_item_description, paid_quantity, month_date) %>% 
 # Group all drugs under general names
   mutate(
-    Drug_Group = case_when(
-      str_detect(bnf_item_description, regex("warfarin", TRUE)) ~ "Warfarin",
-      str_detect(bnf_item_description, regex("heparin", TRUE)) ~ "Heparin",
-      str_detect(bnf_item_description, regex("apixaban",  TRUE)) ~ "Apixaban",
-      str_detect(bnf_item_description, regex("rivaroxaban",   TRUE)) ~ "Rivaroxaban",
-      str_detect(bnf_item_description, regex("Edoxaban",TRUE)) ~ "Edoxaban",
-      TRUE ~                                                     NA_character_
-    )
-  ) %>% 
+  Drug_Group = case_when(
+  str_detect(bnf_item_description, regex("warfarin", TRUE)) ~ "Warfarin",
+  str_detect(bnf_item_description, regex("heparin", TRUE)) ~ "Heparin",
+  str_detect(bnf_item_description, regex("apixaban|eliquis", TRUE)) ~ "Apixaban",
+  str_detect(bnf_item_description, regex("rivaroxaban|xarelto", TRUE)) ~ "Rivaroxaban",
+  str_detect(bnf_item_description, regex("edoxaban|lixiana", TRUE)) ~ "Edoxaban",
+  TRUE ~ NA_character_
+))  %>% 
     drop_na(Drug_Group)
 }
  
@@ -85,16 +109,44 @@ clean_anti_coagulant_data <- function(data) {
 # Function for creating monthly summary per year, month and drug group
 monthly_prescribing_summary <- function(data) {
   data %>% 
-   mutate(
-    Year  = year(month_date),
-    Month = month(month_date, label = TRUE, abbr = TRUE)
-  ) %>%
-  group_by(Year, Month, Drug_Group) %>%
-  summarise(Total_Quantity_Dispensed = sum(paid_quantity, na.rm = TRUE), .groups = "drop")
-  
+    mutate(
+      # Create numeric year
+      Year = year(month_date),
+      
+      # Create ordered month factor (Jan through Dec)
+      Month = factor(
+        month(month_date, label = TRUE, abbr = TRUE),
+        levels = month.abb,
+        ordered = TRUE
+      )
+    ) %>%
+    group_by(Year, Month, Drug_Group) %>%
+    summarise(
+      Total_Quantity_Dispensed = sum(paid_quantity, na.rm = TRUE),
+      .groups = "drop"
+    )
 }
 
-# --- Main data code ---
+# Function to load daily COVID-19 admissions and aggregate to monthly totals
+
+read_covid_admissions <- function(path) {
+  read_csv(path, show_col_types = FALSE) %>% 
+    mutate(
+      Date = as.Date(as.character(Date), format = "%Y%m%d"), #Create a proper date object
+      month_date = floor_date(Date, unit = "month") #Create a monthly date
+    ) %>%
+    filter(
+      Date >= as.Date("2020-03-01"),
+      Date <= as.Date("2022-12-31") #Keep only the period used for the analysis
+    ) %>%
+    group_by(month_date) %>%
+    summarise(
+      monthly_admissions = sum(NumberAdmitted, na.rm = TRUE),
+      .groups = "drop"
+    )
+}
+
+## Main data code:
 
 # Load and stack data for all consecutive years
 anti_coagulant_data_raw <- map_dfr(2018:2022, read_prescriptions_year)
@@ -108,14 +160,7 @@ monthly_yearly_data_summary <- monthly_prescribing_summary(anti_coagulant_data)
 ```
 
 ## Figure 1. Monthly trends in anticoagulant prescribing in Scotland (2018–2022)
-
-```{r figure-1, fig.width=13, fig.height=4.2, fig.cap= "Monthly anticoagulant prescribing trends in Scotland (2018–2022). Source: Public Health Scotland Data by Prescriber Location (2018–2022)"}
-
-monthly_yearly_data_summary <- monthly_yearly_data_summary %>%
-  mutate(
-    Month = factor(Month, levels = month.abb, ordered = TRUE),
-    Year  = factor(Year)
-  )
+```{r figure-1, fig.width=13, fig.height=4.2, fig.align='center', fig.cap= "Figure 1: Monthly anticoagulant prescribing trends in Scotland (2018–2022). <br><span style='font-size:11px; color:#666;'>Facets use free y-axes, making the vertical scale different for each drug, therefore comparisons are valid within a panel but not across panels. Source: Public Health Scotland Data by Prescriber Location (2018–2022).</span>"}
 
 monthly_yearly_data_summary_plot <- monthly_yearly_data_summary %>% 
   ggplot(aes(x = Month,
@@ -137,15 +182,211 @@ monthly_yearly_data_summary_plot <- monthly_yearly_data_summary %>%
     axis.text.x   = element_text(angle = 45, hjust = 1, vjust = 1),
     plot.title    = element_text(hjust = 0.5, face = "bold"),
     plot.subtitle = element_text(hjust = 0.5),
-    legend.position = "bottom" +
-      geom_smooth(se = FALSE, linewidth = 1, alpha = 0.3) +
-      geom_line(linewidth = 0.6)
-  ) 
-
+    legend.position = "bottom"
+  )
 print(monthly_yearly_data_summary_plot)
 ```
 
-# Next steps
+Figure 1 shows the changes in the total quantity of anticoagulant drugs dispensed over the years of 2018-2022. Warfarin shows a steady decrease over time while DOACs such as Apixaban and Edoxaban show a sharp increase, with the most striking rise occurring after the onset of the COVID-19 pandemic (2020 and onwards). Rivaroxaban exhibits a more variable prescribing pattern, yet it still shows an overall rise following 2020. Heparin exhibits a very variable pattern, likely reflecting its acute use in hospital settings during COVID-19 waves. These trends reflect the shift in anticoagulant prescribing from Warfarin to DOACs following the pandemic, in line with national guidelines aimed at reducing the need for in-person blood monitoring procedures. Lastly, as scales differ between facets, the heights of the lines should only be interpreted within a drug, not compared between drugs. This was done to accurately visualise the diverse dispensing quantity across drugs. 
 
-Next I want to create a summary table which shows a change in the prescribing trends in anticoagulant medication. I will include a % change for each drug for a deeper analysis. Then I plan on merging this dataset with a daily COVID19 patient admission to investigate a potential relationship between anticoagulant prescribing and COVID19 hospitalisations (this would be my Figure 4). Not sure how large the discussion and conclusion section should be?
+## Figure 2. Yearly trends in monthly anticoagulant prescribing per drug (2018-2022).
+```{r figure-2, fig.width=14, fig.height=4.5, fig.align='center', fig.cap= "Figure 2: Yearly trends in monthly anticoagulant prescribing per drug (2018-2022). <br><span style='font-size:11px; color:#666;'>Source: Public Health Scotland Data by Prescriber Location (2018–2022).</span>"}
+
+drug_order <- c("Warfarin","Heparin","Apixaban","Rivaroxaban","Edoxaban")
+
+ggplot(monthly_yearly_data_summary %>%
+         filter(Drug_Group %in% drug_order) %>%
+         mutate(Drug_Group = factor(Drug_Group, levels = drug_order)), aes(x = factor(Year), y = Total_Quantity_Dispensed , fill = factor(Year))) +
+  geom_boxplot(outlier.alpha = 0.4, width = 0.6) +
+  facet_wrap(~ Drug_Group, scales = "free_y", nrow = 1) +
+  scale_y_continuous(labels = scales::comma) +
+  scale_fill_manual(
+    values = c("#fbe7f0", "#f6c8e0", "#e5a9d4", "#c8a2c8", "#b58ccf"),
+    name = "Year"
+  ) +
+  labs(
+    title = "Yearly changes in monthly anticoagulant prescribing by drug (2018–2022)",
+    subtitle = "Each box shows the distribution of total monthly quantity of drugs dispensed per year for each drug",
+    x = "Year",
+    y = "Total Quantity Dispensed per Drug",
+    caption = "Source: Public Health Scotland Data by Prescriber Location (2018–2022)"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5),
+    legend.position = "bottom"
+  ) 
+
+```
+
+Figure 2 shows the yearly distribution of the total monthly quantities dispensed for each anticoagulant drug between 2018 and 2022. The boxplots highlight Warfarin's steady decline across the years, with its median monthly prescribing quantity steadily falling from 2018 to 2022. In contrast, DOACs such as Apixaban and Edoxaban show a sharp year-to-year increase, with their median and upper-range values rising, which reflects the growth in their use during and following the COVID-19 pandemic. Rivaroxaban shows more variable prescribing patterns, but still demonstrates a general rise over time. Heparin's variable pattern with no consistent upward or downward trends is again evident. These trends reinforce the findings from Figure 1 and align with national guidelines recommending a switch from Warfarin to DOACs during COVID-19. As scales differ between facets, the heights of the lines should only be interpreted within a drug, not compared between drugs.
+
+## Table 1. Change in anticoagulant prescribing in Scotland between 2018–2022
+```{r table-1, table.width=14, table.height=4.5, table.align='center', table.cap= "Change in anticoagulant prescribing in Scotland between 2018–2022"}
+
+# Yearly totals per drug
+yearly_totals <- monthly_yearly_data_summary %>%
+  group_by(Year, Drug_Group) %>%
+  summarise(
+    Total_Quantity_Dispensed = sum(Total_Quantity_Dispensed, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Wide format table
+yearly_wide <- yearly_totals %>%
+  pivot_wider(
+    names_from  = Drug_Group,
+    values_from = Total_Quantity_Dispensed,
+    values_fill = 0
+  )
+# % change 2018 -> 2022 to provide e better insight into how the trend in prescribing these drugs actually changed
+vals_2018 <- yearly_wide %>% filter(Year == 2018) %>% select(-Year)
+vals_2022 <- yearly_wide %>% filter(Year == 2022) %>% select(-Year)
+pct_change <- ((vals_2022 - vals_2018) / vals_2018) * 100 %>% round(1)
+
+# Function to make drug percentages to be able to be inline inserted into the text
+fmt <- function(x) {
+  out <- sprintf("%.2f", x) #To 2 decimal places
+  ifelse(x > 0, paste0("+", out), out) #Generate strings for each anticoagulant drug
+}
+warfarin_change  <- fmt(pct_change$Warfarin)
+heparin_change   <- fmt(pct_change$Heparin)
+apixaban_change  <- fmt(pct_change$Apixaban)
+rivarox_change   <- fmt(pct_change$Rivaroxaban)
+edoxaban_change  <- fmt(pct_change$Edoxaban)
+
+# Make summary row to join to the table later 
+summary_row <- tibble(Year = "Δ% 2018→2022") %>% bind_cols(pct_change)
+yearly_wide_plus <- yearly_wide %>%
+  mutate(Year = as.character(Year)) %>%   
+  bind_rows(summary_row)
+
+drug_cols <- c("Warfarin","Heparin","Apixaban","Rivaroxaban","Edoxaban")
+
+library(glue)
+
+#Create the table 
+prescription_per_year <-
+  yearly_wide_plus %>%
+  gt() %>%
+  cols_move_to_start(columns = "Year") %>%
+  cols_move(columns = "Heparin",     after = "Warfarin") %>%
+  cols_move(columns = "Apixaban",    after = "Heparin") %>%
+  cols_move(columns = "Rivaroxaban", after = "Apixaban") %>%
+  cols_move(columns = "Edoxaban",    after = "Rivaroxaban") %>%
+  fmt_number(columns = drug_cols, rows = Year != "Δ% 2018→2022", decimals = 2) %>%
+  fmt_number(columns = drug_cols, rows = Year == "Δ% 2018→2022",
+             decimals = 1, pattern = "{x}%") %>%
+  cols_align(align = "center", columns = everything()) %>%
+  data_color(
+    columns = drug_cols,
+    colors = scales::col_numeric(
+      palette = c("#fbe7f0", "#f6c8e0", "#e5a9d4", "#c8a2c8"),
+      domain = NULL
+    )
+  ) %>%
+  tab_style(
+    style = list(cell_fill(color = "#f7eef7"),
+                 cell_text(weight = "bold")),
+    locations = cells_body(rows = Year == "Δ% 2018→2022")
+  ) %>%
+  tab_options(
+  table.font.size = px(13),
+  data_row.padding = px(3),
+  column_labels.font.size = px(12),
+  table.width = pct(90)
+) %>% 
+  tab_header(
+    title = "Table 1: Anti-coagulant prescribing by year",
+    subtitle = glue("Total quantity dispensed per drug, 2018–2022 (with Δ% 2018→2022)")
+  )
+
+prescription_per_year
+
+```
+
+Table 1 shows trends in anticoagulant prescribing in Scotland between 2018 and 2022, with a marked decrease in Warfarin use (`r warfarin_change`%), and a substantial increase in DOACs such as Apixaban (`r apixaban_change`%) and Edoxaban (`r edoxaban_change`%). The exceptionally large percentage increase in Edoxaban reflects its relatively low use in 2018, along with its rapid introduction in subsequent years, especially as DOACs became more favoured during the COVID-19 pandemic. Heparin exhibits almost no overall change in prescribing (`r heparin_change`%), pointing towards its stable use in hospital settings. The slight decrease in Rivaroxaban (`r rivarox_change`%) likely reflects a shift in preference towards Apixaban or Edoxaban. Overall, these patterns further support the pandemic-driven shift in national guidelines from Warfarin to DOACs to minimise in-person blood monitoring requirements.
+
+## Merging the anticoagulant and daily COVID-19 admissions datasets to analyse the relationship between anticoagulant prescriptions and COVID-19 hospitalizations. 
+```{r}
+# Filter anticoagulant data to dates from March 2020 onwards to match the COVID-19 dataset
+filtered_anti_coagulant_data <- anti_coagulant_data %>% 
+  filter(month_date >= as.Date("2020-03-01"))
+
+# Load and aggregate the COVID-19 admissions data to monthly totals
+covid19_monthly_admissions <- read_covid_admissions(
+  here("data", "daily_covid_admissions_20231004.csv")
+)
+
+# Merge monthly COVID-19 admissions with anticoagulant prescribing
+merged_anti_coagulant_covid19_admissions <- covid19_monthly_admissions %>% 
+  full_join(filtered_anti_coagulant_data, join_by(month_date)) #Full join was used to merge the monthly prescribing and COVID-19 datasets to ensure that all months are included, even if one source did not contain data for a particular month.
+
+```
+
+
+## Figure 3. Relationship between COVID-19 hospital admissions and monthly anticoagulant prescribing in Scotland (2020-2022).
+```{r figure-4, fig.width=14, fig.height=4.5, fig.align='center', fig.cap= "Figure 3: Relationship between COVID-19 hospital admissions and monthly anticoagulant prescribing in Scotland (2020-2022)"}
+
+# Clean merged data: keep only rows with both admissions and prescribing info
+summary_merged_data <- merged_anti_coagulant_covid19_admissions %>%
+  filter(
+    !is.na(Drug_Group),
+    !is.na(monthly_admissions),
+    !is.na(paid_quantity)
+  ) %>%
+  group_by(month_date, Drug_Group) %>%
+  summarise(
+    monthly_admissions = first(monthly_admissions), 
+    total_dispensed    = sum(paid_quantity, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    Drug_Group = factor(
+      Drug_Group,
+      levels = c("Warfarin", "Heparin", "Apixaban", "Rivaroxaban", "Edoxaban")
+    )
+  )
+
+ggplot(summary_merged_data, aes(x = monthly_admissions, y = total_dispensed, colour = Drug_Group)) +
+  geom_point(alpha = 0.6, size = 2) +
+  geom_smooth(method = "lm", se = FALSE, linewidth = 1.2) +
+  facet_wrap(~ Drug_Group, scales = "free_y", ncol = 3) +
+  scale_color_brewer(palette = "Set2") +
+  labs(
+    title    = "Relationship Between COVID-19 Admissions and Anticoagulant Prescribing",
+    subtitle = "Linear trend per drug group (2020–2022)",
+    x        = "Monthly COVID-19 Admissions",
+    y        = "Total Quantity Dispensed",
+    colour   = "Drug Group"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title    = element_text(hjust = 0.5, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5),
+    strip.text    = element_text(face = "bold"),
+    legend.position = "none"
+  )
+  
+```
+
+Figure 3 shows the relationship between monthly COVID-19 hospital admissions and the total quantity dispensed of each anticoagulant drug between 2020 and 2022. Warfarin shows a slight negative relationship, with higher COVID-19 admissions associated with lower prescribing, reflecting the broader decline in its use during the pandemic. Heparin and Edoxaban show a positive relationship, suggesting a potential increase in their use during periods of higher COVID-19 admissions, likely reflecting their use in urgent hospital management and the wider uptake of DOACs. Apixaban and Rivaroxaban show weak associations, demonstrating that their prescribing was overall stable, regardless of monthly COVID-19 admission fluctuations.  Overall, these trends showcase that increases in COVID-19 hospital admissions may have had an influence over the use of certain anticoagulants, specifically Heparin and Edoxaban. Importantly, these trends reflect association rather than causation.  
+
+# Discussion & Conclusion
+
+This investigation demonstrated a clear change in anticoagulant prescribing patterns in Scotland between 2018 and 2022, corresponding with the onset and progression of the COVID-19 pandemic. Prescriptions for Warfarin significantly declined over the years, while the use of direct oral anticoagulants (DOACs) such as Apixaban and Edoxaban sharply increased. These findings are in line with national guidance established during the pandemic, encouraging a prescribing switch from Warfarin to DOACs to reduce in-person monitoring and maintain proper anticoagulant patient care under lockdown conditions. The visual relationship between higher COVID-19 admissions and increased use of certain anticoagulants like Heparin and Edoxaban, suggests that pandemic-related hospital demands may also have influenced prescribing behaviour.
+
+Nevertheless, this investigation is limited by its national breadth and lack of demographic or regional data inclusion. It fails to distinguish whether changes in trends were as a result of changes in hospital protocols, primary care adaptations, or patient-derived factors. Future investigations could incorporate geographical or population-level data (e.g., GP practice or health board information) to further explore local variations. 
+
+In conclusion, the COVID-19 pandemic catalysed long-term changes in anticoagulant prescribing in Scotland, accelerating the move away from Warfarin toward DOACs. This analysis showed that with the progression of COVID-19 and increase in admissions, anticoagulant prescription rose over the years, further underlining the crucial role of anticoagulants in managing COVID-19 symptoms and reducing mortality.
+
+# References
+
+1. Curtis, H. J., MacKenna, B., Walker, A. J., Croker, R., Mehrkar, A., Morton, C., Bacon, S., Hickman, G., Inglesby, P., Bates, C., Evans, D., Ward, T., Cockburn, J., Davy, S., Bhaskaran, K., Schultze, A., Rentsch, C. T., Williamson, E., Hulme, W., … Goldacre, B. (2021). OpenSAFELY: Impact of national guidance on switching anticoagulant therapy during COVID-19 pandemic. Open Heart, 8(2). https://doi.org/10.1136/openhrt-2021-001784 
+2. Elezkurtaj, S., Greuel, S., Ihlow, J., Michaelis, E. G., Bischoff, P., Kunze, C. A., Sinn, B. V., Gerhold, M., Hauptmann, K., Ingold-Heppner, B., Miller, F., Herbst, H., Corman, V. M., Martin, H., Radbruch, H., Heppner, F. L., & Horst, D. (2021). Causes of death and comorbidities in hospitalized patients with covid-19. Scientific Reports, 11(1). https://doi.org/10.1038/s41598-021-82862-5 
+3. Kichloo, A., Dettloff, K., Aljadah, M., Albosta, M., Jamal, S., Singh, J., Wani, F., Kumar, A., Vallabhaneni, S., & Khan, M. Z. (2020). Covid-19 and hypercoagulability: A Review. Clinical and Applied Thrombosis/Hemostasis, 26. https://doi.org/10.1177/1076029620962853 
+4. Mohseni Afshar, Z., Tavakoli Pirzaman, A., Hosseinzadeh, R., Babazadeh, A., Taghizadeh Moghadam, M. A., Miri, S. R., Sio, T. T., Sullman, M. J., Barary, M., & Ebrahimpour, S. (2023). Anticoagulant therapy in covid‐19: A narrative review. Clinical and Translational Science, 16(9), 1510–1525. https://doi.org/10.1111/cts.13569 
+5. Sutanto, H., & Soegiarto, G. (2023). Risk of thrombosis during and after a SARS-COV-2 infection: Pathogenesis, Diagnostic Approach, and Management. Hematology Reports, 15(2), 225–243. https://doi.org/10.3390/hematolrep15020024
+
 
